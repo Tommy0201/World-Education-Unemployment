@@ -1,0 +1,449 @@
+---
+title: "Final Project _ World Educational Data"
+author: "Tommy Nguyen"
+date: "2023-11-27"
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(rvest)
+library(stringr)
+library(plotly)
+```
+
+
+
+```{r data_wrangling_unemployment_rates}
+#Read csv files
+education_df <- read.csv('Global_Education.csv') 
+countries_df <- read.csv('countries.csv')
+
+#Rename columns
+sub_countries_df <- countries_df[,c(1,6,32,224:227)]
+sub_countries_df <- sub_countries_df %>% 
+    rename(Unemployement_rate_ages.15.24 =Economy..Youth.unemployment.rate..ages.15.24....total ) %>% 
+    rename(Unemployement_rate_ages.15.24_male =Economy..Youth.unemployment.rate..ages.15.24....male) %>% 
+    rename(Unemployement_rate_ages.15.24_female =Economy..Youth.unemployment.rate..ages.15.24....female) %>%
+    rename(Population=People.and.Society..Population) %>% 
+    rename(Unemployment_Rate_2021 = Economy..Unemployment.rate) %>% 
+    filter(grepl('2021',Unemployment_Rate_2021))
+
+#Set uniform format for each columns
+sub_countries_df$Unemployment_Rate_2021 <-
+    str_extract(sub_countries_df$Unemployment_Rate_2021,"\\d*\\.?\\d*")
+sub_countries_df$Unemployement_rate_ages.15.24 <-
+    str_extract(sub_countries_df$Unemployement_rate_ages.15.24,"\\d*\\.?\\d*")
+sub_countries_df$Unemployement_rate_ages.15.24_female <-
+    str_extract(sub_countries_df$Unemployement_rate_ages.15.24_female,"\\d*\\.?\\d*")
+sub_countries_df$Unemployement_rate_ages.15.24_male <-
+    str_extract(sub_countries_df$Unemployement_rate_ages.15.24_male,"\\d*\\.?\\d*")
+sub_countries_df$Population <- sub_countries_df$Population %>% 
+    str_extract("\\d*\\,?\\d*\\,?\\d*\\,?\\d*") 
+sub_countries_df$Population <- gsub(",","",sub_countries_df$Population)
+    
+    
+
+
+```
+
+```{r data_wrangling_merging_two_dataframes}
+#Reformat "country" values for merging
+sub_countries_df$Country <- sub("^([^,]+), (.+)$", "\\2 \\1", sub_countries_df$Country)
+
+#Rename for merging
+old_name <- c("Burma","Czechia","Cabo Verde","Ireland","Timor-Leste", "Virgin Islands")
+new_name <- c("Myanmar","Czech Republic","Cape Verde", "Republic of Ireland","East Timor","British Virgin Islands")
+sub_countries_df$Country[sub_countries_df$Country %in% old_name] <- new_name
+education_df <- education_df %>% 
+    rename(Country = Countries.and.areas) %>% 
+    select(-Unemployment_Rate)
+
+#Merging
+inner_df <- education_df %>% 
+    inner_join(sub_countries_df, by="Country")
+inner_df <- inner_df %>% 
+    rename(Continents_Regions = Geography..Map.references )
+
+#Correcting some values
+inner_df$Continents_Regions[inner_df$Country=="France"] <- "Europe"
+inner_df$Continents_Regions[inner_df$Country=="Iceland"] <- "Europe"
+inner_df$Continents_Regions[inner_df$Country=="Ukraine"] <- "Europe"
+
+#Filter only needed columns
+merged_df <- inner_df %>% 
+    select(-c(Latitude,Longitude,Birth_Rate, Grade_2_3_Proficiency_Reading, Grade_2_3_Proficiency_Math, Primary_End_Proficiency_Reading, Primary_End_Proficiency_Math,Lower_Secondary_End_Proficiency_Reading,Lower_Secondary_End_Proficiency_Math,Gross_Primary_Education_Enrollment,Completion_Rate_Primary_Female,Completion_Rate_Primary_Male,OOSR_Pre0Primary_Age_Female, OOSR_Pre0Primary_Age_Male, OOSR_Primary_Age_Female, OOSR_Primary_Age_Male,Youth_15_24_Literacy_Rate_Male,Youth_15_24_Literacy_Rate_Female))
+colnames(merged_df)
+
+#Set remaining columns to be numeric
+cols <- c("Unemployment_Rate_2021","Unemployement_rate_ages.15.24","Unemployement_rate_ages.15.24_male","Unemployement_rate_ages.15.24_female","Population")
+merged_df[cols] <- lapply(merged_df[cols], as.numeric)
+
+```
+THIS PART FOCUSES ON FINDING RELATIONSHIPS BETWEEN EDUCATION AND UNEMPLOYMENT
+
+
+AMONG COUNTRIES
+```{r data_visualization}
+gross_edu <- merged_df %>% 
+    filter(Gross_Tertiary_Education_Enrollment!=0)
+graph <- ggplot(gross_edu, aes(x=Gross_Tertiary_Education_Enrollment, y=Unemployment_Rate_2021, color=Country))+
+    geom_point()+
+    theme(legend.position="bottom")+
+    guides(color=guide_legend(nrow=2))+
+    xlab("Gross Tertiary Education Enrollment")+
+    ylab("Unemployment Rate")
+
+ggplotly(graph)
+```
+
+
+
+```{r}
+
+graph1 <- ggplot(gross_edu,aes(x=Gross_Tertiary_Education_Enrollment, y=Unemployement_rate_ages.15.24, color=Country))+
+    geom_point()+
+    theme(legend.position="bottom")+
+    guides(color=guide_legend(nrow=2))+
+    xlab("Gross Tertiary Education Enrollment")+
+    ylab("Unemployment Rate Ages 15-24")
+
+ggplotly(graph1)
+```
+
+
+```{r}
+filtered_1_male <- merged_df %>% 
+    filter(Completion_Rate_Upper_Secondary_Male!=0 & Unemployement_rate_ages.15.24_male!=0)
+
+graph <- ggplot(filtered_1_male, aes(x=Completion_Rate_Upper_Secondary_Male, y=Unemployement_rate_ages.15.24_male, color=Country))+
+    geom_point()+
+    theme(legend.position="bottom")+
+    guides(color=guide_legend(nrow=2))+
+    xlab("Male Upper Secondary Completion Rate")+
+    ylab("Male Unemployment Rate Ages 15-24")
+
+ggplotly(graph)
+
+```
+
+
+
+```{r}
+filtered_2_male <- merged_df %>% 
+    filter(Completion_Rate_Lower_Secondary_Male!=0 & Unemployement_rate_ages.15.24_male!=0)
+
+graph <- ggplot(filtered_2_male, aes(x=Completion_Rate_Lower_Secondary_Male, y=Unemployement_rate_ages.15.24_male, color=Country))+
+    geom_point()+
+    theme(legend.position="bottom")+
+    guides(color=guide_legend(nrow=2))+
+    xlab("Male Lower Secondary Completion Rate")+
+    ylab("Male Unemployment Rate Ages 15-24")
+
+ggplotly(graph)
+
+```
+
+
+```{r}
+filtered_1_female <- merged_df %>% 
+    filter(Completion_Rate_Upper_Secondary_Female!=0 & Unemployement_rate_ages.15.24_female!=0)
+
+graph <- ggplot(filtered_1_female, aes(x=Completion_Rate_Upper_Secondary_Female, y=Unemployement_rate_ages.15.24_female, color=Country))+
+    geom_point()+
+    theme(legend.position="bottom")+
+    guides(color=guide_legend(nrow=2))+
+    xlab("Female Upper Secondary Completion Rate")+
+    ylab("Female Unemployment Rate Ages 15-24")
+
+ggplotly(graph)
+```
+```{r}
+filtered_2_female <- merged_df %>% 
+    filter(Completion_Rate_Lower_Secondary_Female!=0 & Unemployement_rate_ages.15.24_female!=0)
+
+graph <- ggplot(filtered_2_female, aes(x=Completion_Rate_Lower_Secondary_Female, y=Unemployement_rate_ages.15.24_female, color=Country))+
+    geom_point()+
+    theme(legend.position="bottom")+
+    guides(color=guide_legend(nrow=2))+
+    xlab("Female Lower Secondary Completion Rate")+
+    ylab("Female Unemployment Rate Ages 15-24")
+
+ggplotly(graph)
+```
+
+```{r}
+filtered_3_male <- merged_df %>% 
+    filter(OOSR_Upper_Secondary_Age_Male!=0 & Unemployement_rate_ages.15.24_male!=0)
+
+graph <- ggplot(filtered_3_male, aes(x=OOSR_Upper_Secondary_Age_Male, y=Unemployement_rate_ages.15.24_male, color=Country))+
+    geom_point()+
+    theme(legend.position="bottom")+
+    guides(color=guide_legend(nrow=2))+
+    xlab("Male OOSR Upper Secondary Rate")+
+    ylab("Male Unemployment Rate Ages 15-24")
+
+ggplotly(graph)
+
+```
+
+```{r}
+filtered_3_female <- merged_df %>% 
+    filter(OOSR_Lower_Secondary_Age_Female!=0 & Unemployement_rate_ages.15.24_female!=0)
+
+graph <- ggplot(filtered_3_female, aes(x=OOSR_Lower_Secondary_Age_Female, y=Unemployement_rate_ages.15.24_female, color=Country))+
+    geom_point()+
+    theme(legend.position="bottom")+
+    guides(color=guide_legend(nrow=2))+
+    xlab("Female OOSR Lower Secondary Rate")+
+    ylab("Female Unemployment Rate Ages 15-24")
+
+ggplotly(graph)
+
+```
+
+UNEMPLOYMENT RATE MAP
+```{r}
+world <- map_data("world")
+
+map_df <- merged_df %>% 
+    select(Country,Unemployment_Rate_2021) %>% 
+    rename(region=Country) %>% 
+    mutate(region=ifelse(region=="United States","USA",region))
+
+unemployment_map <- map_df %>% 
+    left_join(world,by="region")
+
+ggplot(unemployment_map, aes(long,lat,group=group))+
+    geom_polygon(aes(fill=Unemployment_Rate_2021),color="white")+
+    scale_fill_viridis_c(option="C")+
+    theme(legend.position="bottom")
+
+```
+OOSR Rate Map
+```{r}
+merged_df <- merged_df %>% 
+    mutate(OOSR_Rate_All=rowMeans(select(.,OOSR_Lower_Secondary_Age_Male,OOSR_Lower_Secondary_Age_Female,OOSR_Upper_Secondary_Age_Male,OOSR_Upper_Secondary_Age_Female),na.rm=TRUE))
+
+map_df_1 <- merged_df %>% 
+    select(Country,OOSR_Rate_All) %>% 
+    rename(region=Country) %>% 
+    mutate(region=ifelse(region=="United States","USA",region))
+
+oosr_map <- map_df_1 %>% 
+    left_join(world,by="region")
+
+ggplot(oosr_map, aes(long,lat,group=group))+
+    geom_polygon(aes(fill=OOSR_Rate_All),color="white")+
+    scale_fill_viridis_c(option="C")+
+    theme(legend.position="bottom")
+
+```
+
+
+
+Among continents and regions
+```{r}
+
+columns <- colnames(merged_df %>% 
+                        select(-Country, -Continents_Regions,-Population))
+
+continents2_df <-  merged_df %>% 
+    group_by(Continents_Regions) %>% 
+    summarize(across(columns,
+                     ~sum(.*Population)/sum(Population),.names="{col}"))
+ 
+continents_df <- merged_df %>% 
+    group_by(Continents_Regions) %>% 
+    summarize_at(vars(-Country),mean)
+colnames(continents_df)
+
+continent_colors <- c("Africa" = "red", "Asia" = "blue", "Europe" = "aquamarine", "Central America and the Caribbean"= "aquamarine3","Middle East" = "yellow", "North America" = "purple", "Oceania" = "lightpink1", "South America" = "brown", "Southeast Asia" = "darkgoldenrod3")
+
+ggplot(continents2_df, aes(x=Gross_Tertiary_Education_Enrollment,y=Unemployment_Rate_2021,color=Continents_Regions))+
+    geom_point()+
+    scale_color_manual(values=continent_colors)
+
+
+
+```
+
+
+```{r}
+ggplot(continents2_df, aes(x=OOSR_Rate_All,y=Unemployment_Rate_2021,color=Continents_Regions))+
+    geom_point()+
+    scale_color_manual(values=continent_colors)
+
+
+```
+
+THIS PART FOCUS MORE ON DISPARITIES BETWEEN MALE AND FEMALE
+
+
+```{r}
+merged2_df <- continents2_df %>% 
+    select(.,-c(Gross_Tertiary_Education_Enrollment,Unemployment_Rate_2021, Unemployement_rate_ages.15.24,OOSR_Rate_All))
+merged2_df <- melt(merged2_df, id.vars="Continents_Regions", value.name="Rates", variable.name="Categories")
+merged2_df$Rates <- as.numeric(merged2_df$Rates)
+
+
+
+merged3 <- merged2_df %>%
+  group_by(Continents_Regions) %>%
+  mutate(Category = gsub("_Male|_Female", "", Categories) %>% 
+  gsub("_"," ",.),
+  Gender = gsub(".*_", "", Categories)) %>% 
+  select(Continents_Regions,Category,Rates,Gender) %>% 
+  mutate(Gender=ifelse(tolower(Gender)=="female","Female","Male"))
+
+merged3$Category <- gsub("^Unemployement rate ages.15.24.*", "Unemployment rate ages.15.24", merged3$Category, ignore.case = TRUE)
+
+```
+
+DATA VISUALIZATION
+
+```{r}
+africa_df <- merged3 %>% 
+    filter(Continents_Regions=="Africa")
+
+ggplot(africa_df,aes(x=Category, y= Rates, fill=Gender))+
+    geom_bar(stat="identity",
+             position="dodge")+
+    theme(axis.text.x=element_text(angle=45,hjust=1))+
+    ggtitle("Africa")
+```
+
+```{r}
+asia_df <-  merged3 %>% 
+    filter(Continents_Regions=="Asia")
+
+ggplot(asia_df,aes(x=Category, y= Rates, fill=Gender))+
+    geom_bar(stat="identity",
+             position="dodge")+
+    theme(axis.text.x=element_text(angle=45,hjust=1))+
+    ggtitle("Asia")
+```
+
+
+
+```{r}
+eu_df <-  merged3 %>% 
+    filter(Continents_Regions=="Europe")
+
+ggplot(eu_df,aes(x=Category, y= Rates, fill=Gender))+
+    geom_bar(stat="identity",
+             position="dodge")+
+    theme(axis.text.x=element_text(angle=45,hjust=1))+
+    ggtitle("Europe")
+```
+
+```{r}
+me_df <-  merged3 %>% 
+    filter(Continents_Regions=="Middle East")
+
+ggplot(me_df,aes(x=Category, y= Rates, fill=Gender))+
+    geom_bar(stat="identity",
+             position="dodge")+
+    theme(axis.text.x=element_text(angle=45,hjust=1))+
+    ggtitle("Middle East")
+```
+
+```{r}
+sa_df <-  merged3 %>% 
+    filter(Continents_Regions=="South America")
+
+ggplot(sa_df,aes(x=Category, y= Rates, fill=Gender))+
+    geom_bar(stat="identity",
+             position="dodge")+
+    theme(axis.text.x=element_text(angle=45,hjust=1))+
+    ggtitle("South America")
+```
+
+
+```{r}
+na_df <-  merged3 %>% 
+    filter(Continents_Regions=="North America")
+
+ggplot(na_df,aes(x=Category, y= Rates, fill=Gender))+
+    geom_bar(stat="identity",
+             position="dodge")+
+    theme(axis.text.x=element_text(angle=45,hjust=1))+
+    ggtitle("North America")
+```
+
+
+
+```{r}
+ca_df <-  merged3 %>% 
+    filter(Continents_Regions=="Central America and the Caribbean")
+
+ggplot(ca_df,aes(x=Category, y= Rates, fill=Gender))+
+    geom_bar(stat="identity",
+             position="dodge")+
+    theme(axis.text.x=element_text(angle=45,hjust=1))+
+    ggtitle("Central America and the Caribbean")
+```
+```{r}
+ocea_df <-  merged3 %>% 
+    filter(Continents_Regions=="Oceania")
+
+ggplot(ocea_df,aes(x=Category, y= Rates, fill=Gender))+
+    geom_bar(stat="identity",
+             position="dodge")+
+    theme(axis.text.x=element_text(angle=45,hjust=1))+
+    ggtitle("Oceania")
+```
+
+```{r}
+unemployment <- merged3 %>% 
+    filter(Category=="Unemployment rate ages.15.24")
+ggplot(unemployment,aes(x=Continents_Regions, y= Rates, fill=Gender))+
+    geom_bar(stat="identity",
+             position="dodge")+
+    theme(axis.text.x=element_text(angle=45,hjust=1))+
+    ggtitle("Unemployment rate ages 15-24 among continents")
+```
+```{r}
+Completion_Lower <- merged3 %>% 
+    filter(Category=="Completion Rate Lower Secondary")
+ggplot(Completion_Lower,aes(x=Continents_Regions, y= Rates, fill=Gender))+
+    geom_bar(stat="identity",
+             position="dodge")+
+    theme(axis.text.x=element_text(angle=45,hjust=1))+
+    ggtitle("Completion Rate Lower Secondary Among Continents")
+
+```
+```{r}
+Completion_Upper <- merged3 %>% 
+    filter(Category=="Completion Rate Upper Secondary")
+ggplot(Completion_Upper,aes(x=Continents_Regions, y= Rates, fill=Gender))+
+    geom_bar(stat="identity",
+             position="dodge")+
+    theme(axis.text.x=element_text(angle=45,hjust=1))+
+    ggtitle("Completion Rate Upper Secondary Among Continents")
+
+```
+```{r}
+OOSR_Upper <- merged3 %>% 
+    filter(Category=="OOSR Upper Secondary Age")
+ggplot(OOSR_Upper,aes(x=Continents_Regions, y= Rates, fill=Gender))+
+    geom_bar(stat="identity",
+             position="dodge")+
+    theme(axis.text.x=element_text(angle=45,hjust=1))+
+    ggtitle("OOSR Upper Secondary Age Among Continents")
+
+```
+```{r}
+OOSR_Lower <- merged3 %>% 
+    filter(Category=="OOSR Lower Secondary Age")
+ggplot(OOSR_Lower,aes(x=Continents_Regions, y= Rates, fill=Gender))+
+    geom_bar(stat="identity",
+             position="dodge")+
+    theme(axis.text.x=element_text(angle=45,hjust=1))+
+    ggtitle("OOSR Lower Secondary Age Among Continents")
+    
+
+```
+
